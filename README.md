@@ -10,7 +10,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 ✅ **Azure Container Apps** - Serverless container platform with auto-scaling  
 ✅ **Environment Isolation** - Separate Azure resources per environment  
 ✅ **Security** - Non-root container user, minimal Alpine base image  
-✅ **Modern Stack** - Next.js 14, TypeScript, React 18  
+✅ **Modern Stack** - Next.js 16, TypeScript 5, React 19  
 
 ## 📋 Architecture
 
