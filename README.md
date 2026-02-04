@@ -1,1 +1,261 @@
-# TypescriptNextJS-Container-Devops
+# TypeScript Next.js Azure Container Apps - DevOps Pipeline
+
+A production-ready TypeScript Next.js application with complete CI/CD pipeline for Azure Container Apps deployment.
+
+## 🎯 Features
+
+✅ **Single Image Build** - Build once, deploy everywhere (immutable deployments)  
+✅ **Azure Container Registry** - Centralized container image management  
+✅ **Matrix Deployment** - Parallel deployment to Dev, QA, and Prod environments  
+✅ **Azure Container Apps** - Serverless container platform with auto-scaling  
+✅ **Environment Isolation** - Separate Azure resources per environment  
+✅ **Security** - Non-root container user, minimal Alpine base image  
+✅ **Modern Stack** - Next.js 14, TypeScript, React 18  
+
+## 📋 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     GitHub Actions                           │
+│                                                              │
+│  ┌──────────────┐      ┌─────────────────────────────┐     │
+│  │   Build Job  │──────▶│  Azure Container Registry   │     │
+│  │ (Single Image)│      │   (nerserviceacr.azurecr.io)│     │
+│  └──────────────┘      └─────────────────────────────┘     │
+│                                    │                         │
+│                    ┌───────────────┼───────────────┐        │
+│                    ▼               ▼               ▼        │
+│              ┌─────────┐     ┌─────────┐     ┌─────────┐   │
+│              │   DEV   │     │   QA    │     │  PROD   │   │
+│              │Container│     │Container│     │Container│   │
+│              │  App    │     │  App    │     │  App    │   │
+│              └─────────┘     └─────────┘     └─────────┘   │
+│                                                              │
+│              Resource Group: ner-service-rg                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🚀 Prerequisites
+
+### Azure Resources Required
+
+1. **Azure Container Registry (ACR)**
+   - Name: `nerserviceacr`
+   - SKU: Standard or Premium
+   - Admin user enabled
+
+2. **Azure Resource Group**
+   - Name: `ner-service-rg`
+   - Location: Your preferred region (e.g., eastus)
+
+3. **Azure Container Apps Environment** (one per environment)
+   - `nextjs-env-dev`
+   - `nextjs-env-qa`
+   - `nextjs-env-prod`
+
+### GitHub Secrets Required
+
+Configure the following secrets in your GitHub repository:
+
+- `AZURE_CREDENTIALS` - Azure Service Principal credentials (JSON format)
+- `ACR_USERNAME` - Azure Container Registry username
+- `ACR_PASSWORD` - Azure Container Registry password
+
+## 🔧 Setup Instructions
+
+### 1. Create Azure Resources
+
+```bash
+# Variables
+RESOURCE_GROUP="ner-service-rg"
+LOCATION="eastus"
+ACR_NAME="nerserviceacr"
+
+# Create Resource Group
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# Create Azure Container Registry
+az acr create \
+  --resource-group $RESOURCE_GROUP \
+  --name $ACR_NAME \
+  --sku Standard \
+  --admin-enabled true
+
+# Get ACR credentials
+ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -o tsv)
+ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
+
+# Create Container Apps Environments
+for ENV in dev qa prod; do
+  az containerapp env create \
+    --name nextjs-env-$ENV \
+    --resource-group $RESOURCE_GROUP \
+    --location $LOCATION
+done
+
+# Create Service Principal for GitHub Actions
+az ad sp create-for-rbac \
+  --name "github-actions-sp" \
+  --role contributor \
+  --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/$RESOURCE_GROUP \
+  --sdk-auth
+```
+
+### 2. Configure GitHub Secrets
+
+In your GitHub repository, navigate to Settings → Secrets and Variables → Actions, and add:
+
+1. **AZURE_CREDENTIALS**: The JSON output from the `az ad sp create-for-rbac` command
+2. **ACR_USERNAME**: The ACR username from above
+3. **ACR_PASSWORD**: The ACR password from above
+
+### 3. Deploy
+
+Push to the `main` branch or manually trigger the workflow:
+
+```bash
+git add .
+git commit -m "Initial deployment"
+git push origin main
+```
+
+Or trigger manually from GitHub Actions tab.
+
+## 🏗️ Local Development
+
+### Install Dependencies
+
+```bash
+npm install
+```
+
+### Run Development Server
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Build for Production
+
+```bash
+npm run build
+npm start
+```
+
+### Build Docker Image Locally
+
+```bash
+docker build -t nextjs-app:latest .
+docker run -p 3000:3000 nextjs-app:latest
+```
+
+## 📦 Project Structure
+
+```
+.
+├── app/                    # Next.js app directory
+│   ├── globals.css        # Global styles
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Home page
+├── public/                # Static assets
+├── .github/
+│   └── workflows/
+│       └── azure-container-apps.yml  # CI/CD pipeline
+├── Dockerfile             # Multi-stage Docker build
+├── .dockerignore          # Docker ignore rules
+├── next.config.js         # Next.js configuration
+├── package.json           # Dependencies
+└── tsconfig.json          # TypeScript configuration
+```
+
+## 🔒 Security Features
+
+- **Non-root User**: Container runs as `nextjs` user (UID 1001)
+- **Minimal Base Image**: Alpine Linux (node:20-alpine)
+- **Multi-stage Build**: Optimized image size
+- **No Secrets in Code**: All sensitive data via GitHub Secrets
+- **Immutable Deployments**: Same image across all environments
+
+## 🌍 Environment Configuration
+
+Each environment gets unique configuration:
+
+| Environment | Min Replicas | Max Replicas | Purpose |
+|-------------|--------------|--------------|---------|
+| Dev         | 1            | 3            | Development testing |
+| QA          | 1            | 5            | Quality assurance |
+| Prod        | 2            | 10           | Production workloads |
+
+Environment-specific variables are injected during deployment:
+- `NEXT_PUBLIC_ENVIRONMENT`: dev/qa/prod
+- `NEXT_PUBLIC_VERSION`: Git commit SHA
+- `NODE_ENV`: production
+
+## 🔄 CI/CD Workflow
+
+### Build Job
+1. Checkout code
+2. Set up Docker Buildx
+3. Login to Azure Container Registry
+4. Build Docker image (multi-stage)
+5. Push to ACR with multiple tags
+6. Cache layers for faster subsequent builds
+
+### Deploy Job (Matrix Strategy)
+1. Runs in parallel for dev, qa, and prod
+2. Azure login with Service Principal
+3. Deploy to Azure Container Apps
+4. Configure environment-specific settings
+5. Display deployment URL
+
+## 📊 Monitoring
+
+Access your deployed applications:
+
+- Dev: `https://nextjs-app-dev.<region>.azurecontainerapps.io`
+- QA: `https://nextjs-app-qa.<region>.azurecontainerapps.io`
+- Prod: `https://nextjs-app-prod.<region>.azurecontainerapps.io`
+
+Monitor via Azure Portal:
+- Container Apps metrics
+- Log Analytics
+- Application Insights (if configured)
+
+## 🛠️ Troubleshooting
+
+### Build Failures
+- Check ACR credentials in GitHub Secrets
+- Verify Docker build succeeds locally
+- Review GitHub Actions logs
+
+### Deployment Failures
+- Verify Azure credentials are valid
+- Check Container App Environment exists
+- Ensure Resource Group exists
+- Review Azure Activity Log
+
+### Application Issues
+- Check Container App logs in Azure Portal
+- Verify environment variables are set correctly
+- Test Docker image locally
+
+## 📝 License
+
+See [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test locally and in Docker
+5. Submit a pull request
+
+## 📚 Additional Resources
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Azure Container Apps](https://docs.microsoft.com/azure/container-apps/)
+- [Azure Container Registry](https://docs.microsoft.com/azure/container-registry/)
+- [GitHub Actions](https://docs.github.com/actions)
