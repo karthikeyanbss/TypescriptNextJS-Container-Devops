@@ -1,0 +1,122 @@
+name: Azure Container Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: ner-service-rg
+  ACR_NAME: nerserviceacr
+  IMAGE_NAME: nextjs-typescript-app
+
+jobs:
+  # Build once - single immutable Docker image
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-version: ${{ steps.meta.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_NAME }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+  # Deploy everywhere - parallel deployment to multiple environments
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        environment: [dev, qa, prod]
+        include:
+          - environment: dev
+            container-app-name: nextjs-app-dev
+            min-replicas: 1
+            max-replicas: 3
+          - environment: qa
+            container-app-name: nextjs-app-qa
+            min-replicas: 1
+            max-replicas: 5
+          - environment: prod
+            container-app-name: nextjs-app-prod
+            min-replicas: 2
+            max-replicas: 10
+    
+    environment: ${{ matrix.environment }}
+    
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Container Apps - ${{ matrix.environment }}
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+          containerAppName: ${{ matrix.container-app-name }}
+          imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          targetPort: 3000
+          environmentVariables: |
+            NEXT_PUBLIC_ENVIRONMENT=${{ matrix.environment }}
+            NEXT_PUBLIC_VERSION=${{ github.sha }}
+            NODE_ENV=production
+          ingress: external
+          minReplicas: ${{ matrix.min-replicas }}
+          maxReplicas: ${{ matrix.max-replicas }}
+
+      - name: Get Container App URL
+        run: |
+          FQDN=$(az containerapp show \
+            --name ${{ matrix.container-app-name }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          echo "🚀 Deployed to ${{ matrix.environment }}: https://$FQDN"
