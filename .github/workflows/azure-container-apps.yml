@@ -75,14 +75,10 @@ jobs:
     
     strategy:
       matrix:
-        environment: [dev, qa, uat]
+        environment: [dev]
         include:
           - environment: dev
             container-app-name: nextjs-app-dev
-          - environment: qa
-            container-app-name: nextjs-app-qa
-          - environment: uat
-            container-app-name: nextjs-app-uat
     
     environment: ${{ matrix.environment }}
     
@@ -91,6 +87,28 @@ jobs:
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Container App exists and is healthy
+        env:
+          RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
+          ENVIRONMENT: ${{ env.CONTAINER_APP_ENVIRONMENT }}
+          APP_NAME: ${{ matrix.container-app-name }}
+        run: |
+          set -euo pipefail
+          state=$(az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query provisioningState -o tsv 2>/dev/null || echo "Missing")
+          if [ "$state" != "Succeeded" ]; then
+            echo "Container app '$APP_NAME' is not ready (state=$state); creating placeholder."
+            az containerapp create \
+              --name "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --environment "$ENVIRONMENT" \
+              --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
+              --ingress external \
+              --target-port 80 || true
+            az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP"
+          else
+            echo "Container app '$APP_NAME' is provisioned with state=$state."
+          fi
 
       - name: Deploy to Azure Container Apps - ${{ matrix.environment }}
         uses: azure/container-apps-deploy-action@v1

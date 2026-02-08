@@ -104,6 +104,8 @@ done
 
 # The GitHub Actions workflow updates each Container App with the `nerfastapiacr` image.
 
+The GitHub Actions workflow now checks whether the dev container app exists and is provisioned before attempting to deploy. If the app has a `Failed` provisioning state or is missing, the workflow will re-create the app with the Azure starter image so the action can push your custom image without repeatedly failing.
+
 # Get ACR credentials
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -o tsv)
 ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
@@ -235,7 +237,7 @@ Environment-specific variables are injected during deployment:
 6. Cache layers for faster subsequent builds
 
 ### Deploy Job (Matrix Strategy)
-1. Runs in parallel for dev, qa, and uat
+1. Currently runs only for `dev` while qa/uat are being stood up
 2. Azure login with Service Principal
 3. Deploy to Azure Container Apps
 4. Configure environment-specific settings
