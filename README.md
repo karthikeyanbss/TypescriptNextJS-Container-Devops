@@ -32,6 +32,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 │              └─────────┘     └─────────┘     └─────────┘   │
 │                                                              │
 │              Resource Group: ner-service-rg                  │
+│       Container Apps Environment: ner-env                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,17 +42,20 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 
 1. **Azure Container Registry (ACR)**
   - Name: `nerfastapiacr`
-   - SKU: Standard or Premium
-   - Admin user enabled
+  - SKU: Standard or Premium
+  - Admin user enabled
 
 2. **Azure Resource Group**
-   - Name: `ner-service-rg`
-   - Location: Your preferred region (e.g., eastus)
+  - Name: `ner-service-rg`
+  - Location: Your preferred region (e.g., eastus)
 
-3. **Azure Container Apps Environment** (one per environment)
-  - `nextjs-env-dev`
-  - `nextjs-env-qa`
-  - `nextjs-env-uat`
+3. **Azure Container Apps Environment**
+  - `ner-env`
+
+4. **Container Apps (hosted in `ner-env`)**
+  - `nextjs-app-dev`
+  - `nextjs-app-qa`
+  - `nextjs-app-uat`
 
 ### GitHub Secrets Required
 
@@ -80,6 +84,25 @@ az acr create \
   --name $ACR_NAME \
   --sku Standard \
   --admin-enabled true
+
+# Create Container Apps Environment
+az containerapp env create \
+  --name ner-env \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Optional: create each Container App inside ner-env using a starter image
+for APP in nextjs-app-dev nextjs-app-qa nextjs-app-uat; do
+  az containerapp create \
+    --name $APP \
+    --resource-group $RESOURCE_GROUP \
+    --environment ner-env \
+    --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
+    --ingress external \
+    --target-port 80
+done
+
+# The GitHub Actions workflow updates each Container App with the `nerfastapiacr` image.
 
 # Get ACR credentials
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -o tsv)

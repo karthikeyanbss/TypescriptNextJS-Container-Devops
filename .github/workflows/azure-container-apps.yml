@@ -13,6 +13,7 @@ env:
   AZURE_RESOURCE_GROUP: ner-service-rg
   ACR_NAME: nerfastapiacr
   IMAGE_NAME: nextjs-typescript-app
+  CONTAINER_APP_ENVIRONMENT: ner-env
 
 jobs:
   # Build once - single immutable Docker image
@@ -78,16 +79,10 @@ jobs:
         include:
           - environment: dev
             container-app-name: nextjs-app-dev
-            min-replicas: 1
-            max-replicas: 3
           - environment: qa
             container-app-name: nextjs-app-qa
-            min-replicas: 1
-            max-replicas: 5
           - environment: uat
             container-app-name: nextjs-app-uat
-            min-replicas: 2
-            max-replicas: 6
     
     environment: ${{ matrix.environment }}
     
@@ -102,6 +97,7 @@ jobs:
         with:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           containerAppName: ${{ matrix.container-app-name }}
+          containerAppEnvironment: ${{ env.CONTAINER_APP_ENVIRONMENT }}
           imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
           targetPort: 3000
           environmentVariables: |
@@ -109,8 +105,6 @@ jobs:
             NEXT_PUBLIC_VERSION=${{ github.sha }}
             NODE_ENV=production
           ingress: external
-          minReplicas: ${{ matrix.min-replicas }}
-          maxReplicas: ${{ matrix.max-replicas }}
 
       - name: Get Container App URL
         run: |
