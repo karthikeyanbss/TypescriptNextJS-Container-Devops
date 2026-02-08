@@ -99,6 +99,9 @@ jobs:
           containerAppName: ${{ matrix.container-app-name }}
           containerAppEnvironment: ${{ env.CONTAINER_APP_ENVIRONMENT }}
           imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          acrName: ${{ env.ACR_NAME }}
+          acrUsername: ${{ secrets.ACR_USERNAME }}
+          acrPassword: ${{ secrets.ACR_PASSWORD }}
           targetPort: 3000
           environmentVariables: |
             NEXT_PUBLIC_ENVIRONMENT=${{ matrix.environment }}
