@@ -75,10 +75,14 @@ jobs:
     
     strategy:
       matrix:
-        environment: [dev]
+        environment: [dev, qa, prod]
         include:
           - environment: dev
             container-app-name: nextjs-app-dev
+          - environment: qa
+            container-app-name: nextjs-app-qa
+          - environment: prod
+            container-app-name: nextjs-app-prod
     
     environment: ${{ matrix.environment }}
     

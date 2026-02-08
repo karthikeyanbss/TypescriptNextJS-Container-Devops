@@ -6,7 +6,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 
 ✅ **Single Image Build** - Build once, deploy everywhere (immutable deployments)  
 ✅ **Azure Container Registry** - Centralized container image management  
-✅ **Matrix Deployment** - Parallel deployment to Dev, QA, and UAT environments  
+✅ **Matrix Deployment** - Parallel deployment to Dev, QA, and Prod environments  
 ✅ **Azure Container Apps** - Serverless container platform with auto-scaling  
 ✅ **Environment Isolation** - Separate Azure resources per environment  
 ✅ **Security** - Non-root container user, minimal Alpine base image  
@@ -26,7 +26,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 │                    ┌───────────────┼───────────────┐        │
 │                    ▼               ▼               ▼        │
 │              ┌─────────┐     ┌─────────┐     ┌─────────┐   │
-│              │   DEV   │     │   QA    │     │  UAT    │   │
+│              │   DEV   │     │   QA    │     │  PROD   │   │
 │              │Container│     │Container│     │Container│   │
 │              │  App    │     │  App    │     │  App    │   │
 │              └─────────┘     └─────────┘     └─────────┘   │
@@ -55,7 +55,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 4. **Container Apps (hosted in `ner-env`)**
   - `nextjs-app-dev`
   - `nextjs-app-qa`
-  - `nextjs-app-uat`
+  - `nextjs-app-prod`
 
 ### GitHub Secrets Required
 
@@ -92,7 +92,7 @@ az containerapp env create \
   --location $LOCATION
 
 # Optional: create each Container App inside ner-env using a starter image
-for APP in nextjs-app-dev nextjs-app-qa nextjs-app-uat; do
+for APP in nextjs-app-dev nextjs-app-qa nextjs-app-prod; do
   az containerapp create \
     --name $APP \
     --resource-group $RESOURCE_GROUP \
@@ -104,20 +104,13 @@ done
 
 # The GitHub Actions workflow updates each Container App with the `nerfastapiacr` image.
 
-The GitHub Actions workflow now checks whether the dev container app exists and is provisioned before attempting to deploy. If the app has a `Failed` provisioning state or is missing, the workflow will re-create the app with the Azure starter image so the action can push your custom image without repeatedly failing.
+The GitHub Actions workflow now checks whether each container app exists and is provisioned before attempting to deploy. If an app has a `Failed` provisioning state or is missing, the workflow will re-create it with the Azure starter image so the action can push your custom image without repeatedly failing.
 
 # Get ACR credentials
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -o tsv)
 ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
 
-# Create Container Apps Environments
-for ENV in dev qa uat; do
-  az containerapp env create \
-    --name nextjs-env-$ENV \
-    --resource-group $RESOURCE_GROUP \
-    --location $LOCATION
-done
-
+```
 ```
 
 ### 2. Push Alpine Image Repository
@@ -219,10 +212,10 @@ Each environment gets unique configuration:
 |-------------|--------------|--------------|---------|
 | Dev         | 1            | 3            | Development testing |
 | QA          | 1            | 5            | Quality assurance |
-| UAT         | 2            | 6            | Pre-release validation |
+| Prod        | 2            | 6            | Production workloads |
 
 Environment-specific variables are injected during deployment:
-- `NEXT_PUBLIC_ENVIRONMENT`: dev/qa/uat
+- `NEXT_PUBLIC_ENVIRONMENT`: dev/qa/prod
 - `NEXT_PUBLIC_VERSION`: Git commit SHA
 - `NODE_ENV`: production
 
@@ -237,7 +230,7 @@ Environment-specific variables are injected during deployment:
 6. Cache layers for faster subsequent builds
 
 ### Deploy Job (Matrix Strategy)
-1. Currently runs only for `dev` while qa/uat are being stood up
+1. Runs in parallel for dev, qa, and prod
 2. Azure login with Service Principal
 3. Deploy to Azure Container Apps
 4. Configure environment-specific settings
@@ -249,7 +242,7 @@ Access your deployed applications:
 
 - Dev: `https://nextjs-app-dev.<region>.azurecontainerapps.io`
 - QA: `https://nextjs-app-qa.<region>.azurecontainerapps.io`
-- UAT: `https://nextjs-app-uat.<region>.azurecontainerapps.io`
+- Prod: `https://nextjs-app-prod.<region>.azurecontainerapps.io`
 
 Monitor via Azure Portal:
 - Container Apps metrics
