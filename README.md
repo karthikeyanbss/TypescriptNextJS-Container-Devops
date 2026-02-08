@@ -6,7 +6,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 
 ✅ **Single Image Build** - Build once, deploy everywhere (immutable deployments)  
 ✅ **Azure Container Registry** - Centralized container image management  
-✅ **Matrix Deployment** - Parallel deployment to Dev, QA, and Prod environments  
+✅ **Matrix Deployment** - Parallel deployment to Dev, QA, and UAT environments  
 ✅ **Azure Container Apps** - Serverless container platform with auto-scaling  
 ✅ **Environment Isolation** - Separate Azure resources per environment  
 ✅ **Security** - Non-root container user, minimal Alpine base image  
@@ -20,13 +20,13 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 │                                                              │
 │  ┌──────────────┐      ┌─────────────────────────────┐     │
 │  │   Build Job  │──────▶│  Azure Container Registry   │     │
-│  │ (Single Image)│      │   (nerserviceacr.azurecr.io)│     │
+│  │ (Single Image)│      │   (nerfastapiacr.azurecr.io)│     │
 │  └──────────────┘      └─────────────────────────────┘     │
 │                                    │                         │
 │                    ┌───────────────┼───────────────┐        │
 │                    ▼               ▼               ▼        │
 │              ┌─────────┐     ┌─────────┐     ┌─────────┐   │
-│              │   DEV   │     │   QA    │     │  PROD   │   │
+│              │   DEV   │     │   QA    │     │  UAT    │   │
 │              │Container│     │Container│     │Container│   │
 │              │  App    │     │  App    │     │  App    │   │
 │              └─────────┘     └─────────┘     └─────────┘   │
@@ -40,7 +40,7 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
 ### Azure Resources Required
 
 1. **Azure Container Registry (ACR)**
-   - Name: `nerserviceacr`
+  - Name: `nerfastapiacr`
    - SKU: Standard or Premium
    - Admin user enabled
 
@@ -49,9 +49,9 @@ A production-ready TypeScript Next.js application with complete CI/CD pipeline f
    - Location: Your preferred region (e.g., eastus)
 
 3. **Azure Container Apps Environment** (one per environment)
-   - `nextjs-env-dev`
-   - `nextjs-env-qa`
-   - `nextjs-env-prod`
+  - `nextjs-env-dev`
+  - `nextjs-env-qa`
+  - `nextjs-env-uat`
 
 ### GitHub Secrets Required
 
@@ -69,7 +69,7 @@ Configure the following secrets in your GitHub repository:
 # Variables
 RESOURCE_GROUP="ner-service-rg"
 LOCATION="eastus"
-ACR_NAME="nerserviceacr"
+ACR_NAME="nerfastapiacr"
 
 # Create Resource Group
 az group create --name $RESOURCE_GROUP --location $LOCATION
@@ -86,22 +86,30 @@ ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -o tsv)
 ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
 
 # Create Container Apps Environments
-for ENV in dev qa prod; do
+for ENV in dev qa uat; do
   az containerapp env create \
     --name nextjs-env-$ENV \
     --resource-group $RESOURCE_GROUP \
     --location $LOCATION
 done
 
-# Create Service Principal for GitHub Actions
-az ad sp create-for-rbac \
-  --name "github-actions-sp" \
-  --role contributor \
-  --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/$RESOURCE_GROUP \
-  --sdk-auth
 ```
 
-### 2. Configure GitHub Secrets
+### 2. Push Alpine Image Repository
+
+```bash
+# Login to the newly created registry
+az acr login --name $ACR_NAME
+
+# Ensure the repository exists to capture the Alpine-based artifact
+az acr repository create --name $ACR_NAME --repository nextjs-alpine --image nextjs-alpine:latest
+
+# Build and push the same image that GitHub Actions will deploy later
+docker build -t $ACR_NAME.azurecr.io/nextjs-alpine:latest .
+docker push $ACR_NAME.azurecr.io/nextjs-alpine:latest
+```
+
+### 3. Configure GitHub Secrets
 
 In your GitHub repository, navigate to Settings → Secrets and Variables → Actions, and add:
 
@@ -109,7 +117,7 @@ In your GitHub repository, navigate to Settings → Secrets and Variables → Ac
 2. **ACR_USERNAME**: The ACR username from above
 3. **ACR_PASSWORD**: The ACR password from above
 
-### 3. Deploy
+### 4. Deploy
 
 Push to the `main` branch or manually trigger the workflow:
 
@@ -186,10 +194,10 @@ Each environment gets unique configuration:
 |-------------|--------------|--------------|---------|
 | Dev         | 1            | 3            | Development testing |
 | QA          | 1            | 5            | Quality assurance |
-| Prod        | 2            | 10           | Production workloads |
+| UAT         | 2            | 6            | Pre-release validation |
 
 Environment-specific variables are injected during deployment:
-- `NEXT_PUBLIC_ENVIRONMENT`: dev/qa/prod
+- `NEXT_PUBLIC_ENVIRONMENT`: dev/qa/uat
 - `NEXT_PUBLIC_VERSION`: Git commit SHA
 - `NODE_ENV`: production
 
@@ -204,7 +212,7 @@ Environment-specific variables are injected during deployment:
 6. Cache layers for faster subsequent builds
 
 ### Deploy Job (Matrix Strategy)
-1. Runs in parallel for dev, qa, and prod
+1. Runs in parallel for dev, qa, and uat
 2. Azure login with Service Principal
 3. Deploy to Azure Container Apps
 4. Configure environment-specific settings
@@ -216,7 +224,7 @@ Access your deployed applications:
 
 - Dev: `https://nextjs-app-dev.<region>.azurecontainerapps.io`
 - QA: `https://nextjs-app-qa.<region>.azurecontainerapps.io`
-- Prod: `https://nextjs-app-prod.<region>.azurecontainerapps.io`
+- UAT: `https://nextjs-app-uat.<region>.azurecontainerapps.io`
 
 Monitor via Azure Portal:
 - Container Apps metrics

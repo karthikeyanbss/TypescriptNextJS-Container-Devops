@@ -11,7 +11,7 @@ on:
 
 env:
   AZURE_RESOURCE_GROUP: ner-service-rg
-  ACR_NAME: nerserviceacr
+  ACR_NAME: nerfastapiacr
   IMAGE_NAME: nextjs-typescript-app
 
 jobs:
@@ -74,7 +74,7 @@ jobs:
     
     strategy:
       matrix:
-        environment: [dev, qa, prod]
+        environment: [dev, qa, uat]
         include:
           - environment: dev
             container-app-name: nextjs-app-dev
@@ -84,10 +84,10 @@ jobs:
             container-app-name: nextjs-app-qa
             min-replicas: 1
             max-replicas: 5
-          - environment: prod
-            container-app-name: nextjs-app-prod
+          - environment: uat
+            container-app-name: nextjs-app-uat
             min-replicas: 2
-            max-replicas: 10
+            max-replicas: 6
     
     environment: ${{ matrix.environment }}
     
